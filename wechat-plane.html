@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WeChat Plane Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            background-color: #0a192f;
+            color: #fff;
+            font-family: Arial, sans-serif;
+        }
+        h1 {
+            margin-bottom: 10px;
+            color: #64ffda;
+        }
+        #gameContainer {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        canvas {
+            border: 2px solid #64ffda;
+            background-color: #112240;
+            box-shadow: 0 0 20px rgba(100, 255, 218, 0.3);
+        }
+        #scoreContainer {
+            font-size: 24px;
+            font-weight: bold;
+        }
+        #score {
+            color: #64ffda;
+        }
+        #highScore {
+            color: #ff9800;
+        }
+        #lives {
+            color: #f44336;
+        }
+        #difficulty {
+            color: #ffeb3b;
+        }
+        #controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            background-color: #64ffda;
+            color: #0a192f;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            font-weight: bold;
+        }
+        button:hover {
+            background-color: #52d1b2;
+        }
+        #gameOver {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(10, 25, 47, 0.95);
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            border: 2px solid #f44336;
+            z-index: 10;
+        }
+        #gameOver h2 {
+            color: #f44336;
+            margin-top: 0;
+        }
+        #instructions {
+            margin-top: 20px;
+            text-align: center;
+            max-width: 500px;
+            color: #8892b0;
+            line-height: 1.5;
+        }
+        .key {
+            display: inline-block;
+            padding: 2px 8px;
+            background-color: #233554;
+            border-radius: 4px;
+            font-family: monospace;
+            margin: 0 2px;
+            color: #64ffda;
+        }
+        @media (max-width: 850px) {
+            canvas {
+                width: 90vw;
+                height: calc(90vw * 0.75); /* 4:3 aspect ratio */
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>WeChat Plane Game</h1>
+    <div id="gameContainer">
+        <div id="scoreContainer">
+            Score: <span id="score">0</span> |
+            High Score: <span id="highScore">0</span> |
+            Lives: <span id="lives">3</span> |
+            Difficulty: <span id="difficulty">1</span>
+        </div>
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div id="controls">
+            <button id="startBtn">Start Game</button>
+            <button id="pauseBtn">Pause</button>
+            <button id="restartBtn">Restart</button>
+        </div>
+    </div>
+
+    <div id="gameOver">
+        <h2>Game Over!</h2>
+        <p>Your score: <span id="finalScore">0</span></p>
+        <button id="playAgainBtn">Play Again</button>
+    </div>
+
+    <div id="instructions">
+        <h3>How to Play</h3>
+        <p>Use <span class="key">W</span> <span class="key">A</span> <span class="key">S</span> <span class="key">D</span> or
+           <span class="key">↑</span> <span class="key">←</span> <span class="key">↓</span> <span class="key">→</span> arrow keys to move your plane.</p>
+        <p>Press <span class="key">Space</span> to shoot bullets.</p>
+        <p>Press <span class="key">B</span> to use bombs (when available).</p>
+        <p>Avoid enemy planes and bullets. Shoot enemy planes to earn points.</p>
+        <p>You have 3 lives. Game ends when lives reach 0.</p>
+        <p>Every 500 points you earn an extra life!</p>
+        <p>Difficulty increases every 1000 points with no upper limit. Enemy planes get faster and spawn more frequently.</p>
+        <p>If enemy planes reach the bottom without being shot down, you lose a life.</p>
+        <p>Weapon upgrades every 500 points: spread shot for 10 seconds increases bullet coverage.</p>
+        <p>Get bombs every 500 points to clear all enemies on screen.</p>
+        <p>Power-ups appear every 50-100 seconds: green (fire rate boost), yellow (3-spread), orange (5-spread), red (extra bomb).</p>
+        <p>Boss enemies appear more frequently at higher difficulties - they shoot multiple bullets and take multiple hits to destroy!</p>
+        <p>Boss level and power scale with difficulty - higher level bosses are larger, tougher, and more dangerous.</p>
+    </div>
+
+    <script>
+        // Canvas and context
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const highScoreElement = document.getElementById('highScore');
+        const livesElement = document.getElementById('lives');
+        const difficultyElement = document.getElementById('difficulty');
+        const finalScoreElement = document.getElementById('finalScore');
+        const startBtn = document.getElementById('startBtn');
+        const pauseBtn = document.getElementById('pauseBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const playAgainBtn = document.getElementById('playAgainBtn');
+        const gameOverScreen = document.getElementById('gameOver');
+
+        // Game constants
+        const PLAYER_SPEED = 5;
+        const BULLET_SPEED = 7;
+        const ENEMY_SPEED_MIN = 1;
+        const ENEMY_SPEED_MAX = 3;
+        const ENEMY_SPAWN_RATE = 60; // frames between enemy spawns
+        const PLAYER_SHOOT_COOLDOWN = 15; // frames between shots
+        const PLAYER_WIDTH = 30;
+        const PLAYER_HEIGHT = 30;
+        const ENEMY_WIDTH = 30;
+        const ENEMY_HEIGHT = 30;
+        const BULLET_RADIUS = 4;
+
+        // Game state
+        let player = { x: canvas.width / 2, y: canvas.height - 50 };
+        let bullets = [];
+        let enemies = [];
+        let score = 0;
+        let highScore = localStorage.getItem('planeHighScore') || 0;
+        let lives = 3;
+        let difficulty = 1;
+        let weaponLevel = 1; // 1: single shot, 2: spread shot
+        let bombs = 0; // Number of bombs available
+        let bombsEarned = 0; // Total bombs earned based on score
+        let bombsUsed = 0; // Number of bombs used
+        let spreadShotTimeLeft = 0; // Frames remaining for spread shot (10 seconds = 600 frames at 60fps)
+        let bombCooldown = 0; // Prevent bomb spam
+        let lastSpreadLevel = 0; // Track last spread shot level for activation
+        let gameRunning = false;
+        let gamePaused = false;
+        let animationId = null;
+        let keys = {};
+        let enemySpawnCounter = 0;
+        let shootCooldown = 0;
+        let powerUps = []; // Power-up items that fall from the top
+        let enemyBullets = []; // Bullets fired by boss enemies
+        let gameTime = 0; // Total game time in frames
+        let lastPowerUpTime = 0; // Last time a power-up was spawned
+        let fireRateBoostTimeLeft = 0; // Frames remaining for fire rate boost
+        let powerUpSpreadTimeLeft = 0; // Frames remaining for power-up spread shot
+        let lastLifeBonusScore = 0; // Last score when life bonus was given
+
+        // Check for life bonus every 500 points
+        function checkLifeBonus() {
+            const currentLifeLevel = Math.floor(score / 500);
+            const lastLifeLevel = Math.floor(lastLifeBonusScore / 500);
+            if (currentLifeLevel > lastLifeLevel) {
+                lives++;
+                livesElement.textContent = lives;
+                lastLifeBonusScore = score;
+            }
+        }
+
+        // Initialize game
+        function initGame() {
+            player = { x: canvas.width / 2, y: canvas.height - 50 };
+            bullets = [];
+            enemies = [];
+            score = 0;
+            lives = 3;
+            difficulty = 1;
+            weaponLevel = 1;
+            bombs = 1;
+            bombsEarned = 0;
+            bombsUsed = 0;
+            spreadShotTimeLeft = 0;
+            bombCooldown = 0;
+            lastSpreadLevel = 0;
+            enemySpawnCounter = 0;
+            shootCooldown = 0;
+            powerUps = [];
+            enemyBullets = [];
+            gameTime = 0;
+            lastPowerUpTime = 0;
+            fireRateBoostTimeLeft = 0;
+            powerUpSpreadTimeLeft = 0;
+            lastLifeBonusScore = 0;
+            keys = {};
+
+            scoreElement.textContent = score;
+            highScoreElement.textContent = highScore;
+            livesElement.textContent = lives;
+            difficultyElement.textContent = difficulty;
+
+            gameOverScreen.style.display = 'none';
+        }
+
+        // Draw player as a triangle
+        function drawPlayer() {
+            ctx.save();
+            ctx.translate(player.x, player.y);
+            ctx.fillStyle = '#64ffda';
+            ctx.beginPath();
+            ctx.moveTo(0, -PLAYER_HEIGHT / 2); // Top point
+            ctx.lineTo(-PLAYER_WIDTH / 2, PLAYER_HEIGHT / 2); // Bottom left
+            ctx.lineTo(PLAYER_WIDTH / 2, PLAYER_HEIGHT / 2); // Bottom right
+            ctx.closePath();
+            ctx.fill();
+
+            // Draw cockpit
+            ctx.fillStyle = '#0a192f';
+            ctx.beginPath();
+            ctx.arc(0, 0, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        }
+
+        // Draw enemy as a rectangle
+        function drawEnemy(enemy) {
+            if (enemy.type === 'boss') {
+                // Boss size and color based on level
+                const bossSize = 1 + enemy.level * 0.2; // Higher level bosses are larger
+                const bossColors = ['#8b0000', '#a00000', '#b00000', '#c00000', '#d00000']; // Different shades of red
+                const bossColor = bossColors[Math.min(enemy.level - 1, bossColors.length - 1)];
+                
+                // Draw boss enemy
+                ctx.fillStyle = bossColor;
+                ctx.fillRect(enemy.x - ENEMY_WIDTH * bossSize, enemy.y - ENEMY_HEIGHT * bossSize, 
+                           ENEMY_WIDTH * 2 * bossSize, ENEMY_HEIGHT * 2 * bossSize);
+                
+                // Draw boss details
+                ctx.fillStyle = '#ff6666';
+                ctx.fillRect(enemy.x - ENEMY_WIDTH * bossSize / 2, enemy.y - ENEMY_HEIGHT * bossSize / 2, 
+                           ENEMY_WIDTH * bossSize, ENEMY_HEIGHT * bossSize);
+                
+                // Draw level indicator
+                ctx.fillStyle = '#fff';
+                ctx.font = '14px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(`Lv.${enemy.level}`, enemy.x, enemy.y - ENEMY_HEIGHT * bossSize - 5);
+                
+                // Draw health bar
+                const barWidth = ENEMY_WIDTH * 2 * bossSize;
+                const barHeight = 4;
+                const healthPercent = enemy.health / enemy.maxHealth;
+                
+                // Background
+                ctx.fillStyle = '#333';
+                ctx.fillRect(enemy.x - barWidth / 2, enemy.y - ENEMY_HEIGHT * bossSize - 15, barWidth, barHeight);
+                
+                // Health
+                ctx.fillStyle = healthPercent > 0.6 ? '#0f0' : healthPercent > 0.3 ? '#ff0' : '#f00';
+                ctx.fillRect(enemy.x - barWidth / 2, enemy.y - ENEMY_HEIGHT * bossSize - 15, barWidth * healthPercent, barHeight);
+                
+                ctx.textAlign = 'left';
+            } else {
+                // Draw normal enemy
+                ctx.fillStyle = '#f44336';
+                ctx.fillRect(enemy.x - ENEMY_WIDTH / 2, enemy.y - ENEMY_HEIGHT / 2, ENEMY_WIDTH, ENEMY_HEIGHT);
+
+                // Draw enemy details
+                ctx.fillStyle = '#ff7961';
+                ctx.fillRect(enemy.x - ENEMY_WIDTH / 4, enemy.y - ENEMY_HEIGHT / 4, ENEMY_WIDTH / 2, ENEMY_HEIGHT / 2);
+            }
+        }
+
+        // Draw bullet as a circle
+        function drawBullet(bullet) {
+            ctx.fillStyle = '#ff9800';
+            ctx.beginPath();
+            ctx.arc(bullet.x, bullet.y, BULLET_RADIUS, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Get power-up color
+        function getPowerUpColor(type) {
+            switch (type) {
+                case 'fireRate': return '#00ff00'; // Green
+                case 'spread3': return '#ffff00'; // Yellow
+                case 'spread5': return '#ff8000'; // Orange
+                case 'bomb': return '#ff0000'; // Red
+                default: return '#ffffff';
+            }
+        }
+
+        // Get power-up symbol
+        function getPowerUpSymbol(type) {
+            switch (type) {
+                case 'fireRate': return 'F';
+                case 'spread3': return '3';
+                case 'spread5': return '5';
+                case 'bomb': return 'B';
+                default: return '?';
+            }
+        }
+
+        // Draw all game objects
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = '#112240';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw player
+            drawPlayer();
+
+            // Draw bullets
+            bullets.forEach(drawBullet);
+
+            // Draw enemy bullets
+            enemyBullets.forEach(bullet => {
+                ctx.fillStyle = '#ff4444'; // Red for enemy bullets
+                ctx.beginPath();
+                ctx.arc(bullet.x, bullet.y, BULLET_RADIUS, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Draw enemies
+            enemies.forEach(drawEnemy);
+
+            // Draw power-ups
+            powerUps.forEach(powerUp => {
+                ctx.fillStyle = getPowerUpColor(powerUp.type);
+                ctx.fillRect(powerUp.x - 10, powerUp.y - 10, 20, 20);
+                
+                // Draw power-up symbol
+                ctx.fillStyle = '#fff';
+                ctx.font = '12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(getPowerUpSymbol(powerUp.type), powerUp.x, powerUp.y + 4);
+                ctx.textAlign = 'left';
+            });
+
+            // Draw HUD (Heads-up display)
+            ctx.fillStyle = '#fff';
+            ctx.font = '16px Arial';
+            ctx.fillText(`Score: ${score}`, 10, 20);
+            ctx.fillText(`Lives: ${lives}`, 10, 40);
+            ctx.fillText(`Difficulty: ${difficulty}`, 10, 60);
+            ctx.fillText(`Weapon: ${powerUpSpreadTimeLeft > 0 ? `Power Spread (${Math.ceil(powerUpSpreadTimeLeft / 60)}s)` : spreadShotTimeLeft > 0 ? `Spread (${Math.ceil(spreadShotTimeLeft / 60)}s)` : 'Single'}`, 10, 80);
+            ctx.fillText(`Fire Rate: ${fireRateBoostTimeLeft > 0 ? `Fast (${Math.ceil(fireRateBoostTimeLeft / 60)}s)` : 'Normal'}`, 10, 100);
+            ctx.fillText(`Bombs: ${bombs}`, 10, 120);
+            ctx.fillText(`High Score: ${highScore}`, canvas.width - 150, 20);
+        }
+
+        // Update game state
+        function update() {
+            if (gamePaused || !gameRunning) return;
+
+            // Calculate difficulty and weapon upgrades based on score
+            const newDifficulty = Math.floor(score / 1000) + 1; // No upper limit on difficulty
+            if (newDifficulty !== difficulty) {
+                difficulty = newDifficulty;
+                difficultyElement.textContent = difficulty;
+            }
+
+            // Check for spread shot activation (every 500 points)
+            const currentSpreadLevel = Math.floor(score / 500);
+            if (currentSpreadLevel > lastSpreadLevel && spreadShotTimeLeft === 0) {
+                spreadShotTimeLeft = 600; // 10 seconds at 60fps
+                lastSpreadLevel = currentSpreadLevel;
+            }
+
+            const newBombsEarned = Math.floor(score / 500);
+            if (newBombsEarned > bombsEarned) {
+                bombsEarned = newBombsEarned;
+            }
+            
+            // Update available bombs
+            bombs = bombsEarned - bombsUsed;
+
+            // Move player based on keys
+            if (keys['ArrowLeft'] || keys['a']) player.x -= PLAYER_SPEED;
+            if (keys['ArrowRight'] || keys['d']) player.x += PLAYER_SPEED;
+            if (keys['ArrowUp'] || keys['w']) player.y -= PLAYER_SPEED;
+            if (keys['ArrowDown'] || keys['s']) player.y += PLAYER_SPEED;
+
+            // Keep player within canvas bounds
+            player.x = Math.max(PLAYER_WIDTH / 2, Math.min(canvas.width - PLAYER_WIDTH / 2, player.x));
+            player.y = Math.max(PLAYER_HEIGHT / 2, Math.min(canvas.height - PLAYER_HEIGHT / 2, player.y));
+
+            // Check collisions between player and power-ups
+            for (let i = powerUps.length - 1; i >= 0; i--) {
+                const dx = player.x - powerUps[i].x;
+                const dy = player.y - powerUps[i].y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < Math.max(PLAYER_WIDTH, PLAYER_HEIGHT) / 2 + 10) {
+                    // Power-up collected
+                    switch (powerUps[i].type) {
+                        case 'fireRate':
+                            fireRateBoostTimeLeft = 300; // 5 seconds
+                            break;
+                        case 'spread3':
+                            powerUpSpreadTimeLeft = 300; // 5 seconds, 3 bullets
+                            break;
+                        case 'spread5':
+                            powerUpSpreadTimeLeft = 300; // 5 seconds, 5 bullets
+                            break;
+                        case 'bomb':
+                            bombsEarned++;
+                            bombs = bombsEarned - bombsUsed;
+                            break;
+                    }
+                    powerUps.splice(i, 1);
+                }
+            }
+
+            // Update power-up effects
+            if (fireRateBoostTimeLeft > 0) {
+                fireRateBoostTimeLeft--;
+            }
+            if (powerUpSpreadTimeLeft > 0) {
+                powerUpSpreadTimeLeft--;
+            }
+
+            // Handle shooting
+            if (shootCooldown > 0) shootCooldown--;
+            if ((keys[' '] || keys['Spacebar']) && shootCooldown === 0) {
+                let baseCooldown = PLAYER_SHOOT_COOLDOWN;
+                if (fireRateBoostTimeLeft > 0) {
+                    baseCooldown = Math.floor(baseCooldown * 0.5); // 50% faster shooting
+                }
+
+                if (powerUpSpreadTimeLeft > 0) {
+                    // Power-up spread shot
+                    const spreadAngle = Math.PI / 6; // 30 degrees spread
+                    const numBullets = 5; // 5 bullets for power-up spread
+                    const angleStep = spreadAngle * 2 / (numBullets - 1);
+                    const startAngle = -spreadAngle;
+
+                    for (let i = 0; i < numBullets; i++) {
+                        const angle = startAngle + angleStep * i;
+                        const bulletX = player.x + Math.sin(angle) * 10;
+                        const bulletY = player.y - PLAYER_HEIGHT / 2 - Math.cos(angle) * 10;
+                        bullets.push({ x: bulletX, y: bulletY, angle: angle });
+                    }
+                } else if (spreadShotTimeLeft > 0) {
+                    // Score-based spread shot
+                    const spreadAngle = Math.PI / 6; // 30 degrees spread
+                    const numBullets = 3; // Fixed 3 bullets for spread shot
+                    const angleStep = spreadAngle * 2 / (numBullets - 1);
+                    const startAngle = -spreadAngle;
+
+                    for (let i = 0; i < numBullets; i++) {
+                        const angle = startAngle + angleStep * i;
+                        const bulletX = player.x + Math.sin(angle) * 10;
+                        const bulletY = player.y - PLAYER_HEIGHT / 2 - Math.cos(angle) * 10;
+                        bullets.push({ x: bulletX, y: bulletY, angle: angle });
+                    }
+                } else {
+                    // Single shot
+                    bullets.push({ x: player.x, y: player.y - PLAYER_HEIGHT / 2 });
+                }
+                shootCooldown = baseCooldown;
+            }
+
+            // Update spread shot timer
+            if (spreadShotTimeLeft > 0) {
+                spreadShotTimeLeft--;
+            }
+
+            // Update bomb cooldown
+            if (bombCooldown > 0) {
+                bombCooldown--;
+            }
+
+            // Handle bomb
+            if ((keys['b'] || keys['B']) && bombCooldown === 0) {
+                if (bombs > 0) {
+                    // Clear all enemies
+                    enemies = [];
+                    bombsUsed++;
+                    bombs = bombsEarned - bombsUsed; // Update available bombs
+                    bombCooldown = 30; // 0.5 second cooldown
+                }
+            }
+
+            // Update bullets
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                if (bullets[i].angle !== undefined) {
+                    // Spread shot bullet
+                    bullets[i].x += Math.sin(bullets[i].angle) * BULLET_SPEED * 0.7;
+                    bullets[i].y -= Math.cos(bullets[i].angle) * BULLET_SPEED * 0.7;
+                } else {
+                    // Normal bullet
+                    bullets[i].y -= BULLET_SPEED;
+                }
+
+                // Remove bullets that go off screen
+                if (bullets[i].y < -BULLET_RADIUS || bullets[i].x < -BULLET_RADIUS || bullets[i].x > canvas.width + BULLET_RADIUS) {
+                    bullets.splice(i, 1);
+                }
+            }
+
+            // Update enemy bullets
+            for (let i = enemyBullets.length - 1; i >= 0; i--) {
+                enemyBullets[i].x += Math.sin(enemyBullets[i].angle) * enemyBullets[i].speed;
+                enemyBullets[i].y += Math.cos(enemyBullets[i].angle) * enemyBullets[i].speed;
+
+                // Remove enemy bullets that go off screen
+                if (enemyBullets[i].y > canvas.height + BULLET_RADIUS || 
+                    enemyBullets[i].x < -BULLET_RADIUS || 
+                    enemyBullets[i].x > canvas.width + BULLET_RADIUS) {
+                    enemyBullets.splice(i, 1);
+                }
+            }
+
+            // Spawn enemies
+            enemySpawnCounter++;
+            const baseSpawnRate = 120; // Slower initial spawn rate
+            const spawnRate = Math.max(30, baseSpawnRate - (difficulty - 1) * 8); // Decrease spawn rate with difficulty
+            if (enemySpawnCounter >= spawnRate) {
+                const enemyX = Math.random() * (canvas.width - ENEMY_WIDTH) + ENEMY_WIDTH / 2;
+                const baseSpeed = ENEMY_SPEED_MIN + Math.random() * (ENEMY_SPEED_MAX - ENEMY_SPEED_MIN);
+                const speedMultiplier = 1 + (difficulty - 1) * 0.15; // Slower speed increase
+                const enemySpeed = Math.min(baseSpeed * speedMultiplier, 6); // Cap maximum speed
+                
+                // Spawn boss enemies based on difficulty
+                const bossChance = Math.min(0.5, 0.1 + (difficulty - 1) * 0.05); // Start at 10%, increase by 5% per difficulty level, max 50%
+                const isBoss = Math.random() < bossChance;
+                
+                if (isBoss) {
+                    // Determine boss level based on difficulty
+                    const maxBossLevel = Math.min(5, Math.floor(difficulty / 2) + 1);
+                    const bossLevel = Math.floor(Math.random() * maxBossLevel) + 1;
+                    
+                    // Boss stats scale with level and difficulty
+                    const bossHealth = 2 + bossLevel + Math.floor((difficulty - 1) / 3);
+                    const bossSpeed = enemySpeed * (0.8 - bossLevel * 0.05); // Higher level bosses are slower
+                    
+                    enemies.push({ 
+                        x: enemyX, 
+                        y: -ENEMY_HEIGHT / 2, 
+                        speed: Math.max(1, bossSpeed), // Minimum speed of 1
+                        type: 'boss',
+                        level: bossLevel,
+                        health: bossHealth,
+                        maxHealth: bossHealth,
+                        lastShot: 0,
+                        shootCooldown: Math.max(60, 120 - (difficulty + bossLevel) * 5) // Faster shooting at higher levels/difficulty
+                    });
+                } else {
+                    enemies.push({ 
+                        x: enemyX, 
+                        y: -ENEMY_HEIGHT / 2, 
+                        speed: enemySpeed,
+                        type: 'normal'
+                    });
+                }
+                enemySpawnCounter = 0;
+            }
+
+            // Spawn power-ups every 50-100 seconds
+            gameTime++;
+            const timeSinceLastPowerUp = gameTime - lastPowerUpTime;
+            const powerUpInterval = Math.random() < 0.5 ? 3000 : 6000; // 50s or 100s (at 60fps)
+            if (timeSinceLastPowerUp >= powerUpInterval) {
+                const powerUpX = Math.random() * (canvas.width - 20) + 10;
+                const powerUpTypes = ['fireRate', 'spread3', 'spread5', 'bomb'];
+                const randomType = powerUpTypes[Math.floor(Math.random() * powerUpTypes.length)];
+                powerUps.push({
+                    x: powerUpX,
+                    y: -20,
+                    type: randomType,
+                    speed: 2
+                });
+                lastPowerUpTime = gameTime;
+            }
+
+            // Update power-ups
+            for (let i = powerUps.length - 1; i >= 0; i--) {
+                powerUps[i].y += powerUps[i].speed;
+
+                // Remove power-ups that go off screen
+                if (powerUps[i].y > canvas.height + 20) {
+                    powerUps.splice(i, 1);
+                }
+            }
+
+            // Update enemies
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                enemies[i].y += enemies[i].speed;
+
+                // Boss enemy shooting logic
+                if (enemies[i].type === 'boss') {
+                    enemies[i].lastShot++;
+                    if (enemies[i].lastShot >= enemies[i].shootCooldown) {
+                        // Boss fires spread bullets based on level
+                        const numBullets = 2 + enemies[i].level; // Level 1: 3 bullets, Level 5: 7 bullets
+                        const spreadAngle = Math.PI / 3; // 60 degrees spread
+                        const angleStep = spreadAngle * 2 / (numBullets - 1);
+                        const startAngle = -spreadAngle;
+
+                        for (let j = 0; j < numBullets; j++) {
+                            const angle = startAngle + angleStep * j;
+                            const bulletX = enemies[i].x + Math.sin(angle) * 15;
+                            const bulletY = enemies[i].y + Math.cos(angle) * 15;
+                            enemyBullets.push({ 
+                                x: bulletX, 
+                                y: bulletY, 
+                                angle: angle,
+                                speed: 3 + enemies[i].level * 0.5, // Higher level bullets are faster
+                                damage: 1 // All enemy bullets do 1 damage for now
+                            });
+                        }
+                        enemies[i].lastShot = 0;
+                    }
+                }
+
+                // Check if enemy reached bottom
+                if (enemies[i].y > canvas.height + ENEMY_HEIGHT / 2) {
+                    enemies.splice(i, 1);
+                    lives--;
+                    livesElement.textContent = lives;
+
+                    if (lives <= 0) {
+                        gameOver();
+                        return;
+                    }
+                }
+            }
+
+            // Check collisions between bullets and enemies
+            for (let i = bullets.length - 1; i >= 0; i--) {
+                for (let j = enemies.length - 1; j >= 0; j--) {
+                    const dx = bullets[i].x - enemies[j].x;
+                    const dy = bullets[i].y - enemies[j].y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    let collisionSize = Math.max(ENEMY_WIDTH, ENEMY_HEIGHT) / 2;
+                    if (enemies[j].type === 'boss') {
+                        collisionSize = Math.max(ENEMY_WIDTH * 2, ENEMY_HEIGHT * 2) / 2; // Boss has larger hitbox
+                    }
+
+                    if (distance < BULLET_RADIUS + collisionSize) {
+                        // Collision detected
+                        bullets.splice(i, 1);
+                        
+                        if (enemies[j].type === 'boss') {
+                            // Boss takes multiple hits
+                            enemies[j].health--;
+                            if (enemies[j].health <= 0) {
+                                // Save boss level before removing it
+                                const bossLevel = enemies[j].level;
+                                enemies.splice(j, 1);
+                                // Boss defeat reward scales with level and difficulty
+                                const baseReward = 300;
+                                const levelBonus = bossLevel * 100;
+                                const difficultyBonus = (difficulty - 1) * 50;
+                                score += baseReward + levelBonus + difficultyBonus;
+                            } else {
+                                // Partial damage reward
+                                score += 20 + enemies[j].level * 5;
+                            }
+                        } else {
+                            // Normal enemy
+                            enemies.splice(j, 1);
+                            score += 30;
+                        }
+                        
+                        scoreElement.textContent = score;
+                        checkLifeBonus(); // Check for life bonus
+
+                        // Update high score
+                        if (score > highScore) {
+                            highScore = score;
+                            highScoreElement.textContent = highScore;
+                            localStorage.setItem('planeHighScore', highScore);
+                        }
+                        break; // Bullet can only hit one enemy
+                    }
+                }
+            }
+
+            // Check collisions between player and enemies
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const dx = player.x - enemies[i].x;
+                const dy = player.y - enemies[i].y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < Math.max(PLAYER_WIDTH, PLAYER_HEIGHT) / 2 + Math.max(ENEMY_WIDTH, ENEMY_HEIGHT) / 2) {
+                    // Collision detected
+                    enemies.splice(i, 1);
+                    lives--;
+                    livesElement.textContent = lives;
+
+                    if (lives <= 0) {
+                        gameOver();
+                        return;
+                    }
+                }
+            }
+
+            // Check collisions between player and enemy bullets
+            for (let i = enemyBullets.length - 1; i >= 0; i--) {
+                const dx = player.x - enemyBullets[i].x;
+                const dy = player.y - enemyBullets[i].y;
+                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                if (distance < Math.max(PLAYER_WIDTH, PLAYER_HEIGHT) / 2 + BULLET_RADIUS) {
+                    // Collision detected
+                    enemyBullets.splice(i, 1);
+                    lives--;
+                    livesElement.textContent = lives;
+
+                    if (lives <= 0) {
+                        gameOver();
+                        return;
+                    }
+                }
+            }
+        }
+
+        // Game loop
+        function gameLoop() {
+            update();
+            draw();
+            if (gameRunning) {
+                animationId = requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // Start game
+        function startGame() {
+            if (!gameRunning) {
+                initGame();
+                gameRunning = true;
+                gamePaused = false;
+                startBtn.textContent = 'Restart';
+                animationId = requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // Pause game
+        function togglePause() {
+            if (!gameRunning) return;
+
+            gamePaused = !gamePaused;
+            pauseBtn.textContent = gamePaused ? 'Resume' : 'Pause';
+
+            if (!gamePaused && gameRunning) {
+                animationId = requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // Game over
+        function gameOver() {
+            gameRunning = false;
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+            finalScoreElement.textContent = score;
+            gameOverScreen.style.display = 'block';
+        }
+
+        // Restart game
+        function restartGame() {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+            initGame();
+            gameRunning = true;
+            gamePaused = false;
+            startBtn.textContent = 'Restart';
+            pauseBtn.textContent = 'Pause';
+            animationId = requestAnimationFrame(gameLoop);
+        }
+
+        // Keyboard event listeners
+        document.addEventListener('keydown', (e) => {
+            keys[e.key] = true;
+            keys[e.code] = true;
+
+            // Prevent spacebar from scrolling page
+            if (e.code === 'Space') {
+                e.preventDefault();
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            keys[e.key] = false;
+            keys[e.code] = false;
+        });
+
+        // Button event listeners
+        startBtn.addEventListener('click', startGame);
+        pauseBtn.addEventListener('click', togglePause);
+        restartBtn.addEventListener('click', restartGame);
+        playAgainBtn.addEventListener('click', restartGame);
+
+        // Initialize high score display
+        highScoreElement.textContent = highScore;
+
+        // Draw initial state
+        initGame();
+        draw();
+    </script>
+</body>
+</html>

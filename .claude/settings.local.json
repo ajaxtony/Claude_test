@@ -3,5 +3,9 @@
     "allow": [
       "Bash(open:*)"
     ]
+  },
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": false
   }
 }
